@@ -7,8 +7,10 @@ const selfMute = false;
 const selfDeafen = true;
 const intents = (1 << 9) + (1 << 15);
 
-const guildId = "1309396066482786315";
-const channelId = "1309396066482786319";
+// const guildId = "1309396066482786315";
+// const channelId = "1309396066482786319";
+const guildId = "875581360071376926";
+const channelId = "875581360071376930";
 
 let extraFfmpegArgs = [];
 let playing;
@@ -453,17 +455,9 @@ function play(input, voiceGateway, udpConnection, secretKey) {
 
     function send() {
         if (!queue.length) {
-            if ((!building || stopping) && !stopped) {
-                stopping = false;
-                stopped = true;
-                if (building) ffmpegProcess.kill("SIGKILL");
-                setSpeaking(voiceGateway, false);
-                call("stopped");
-            }
+            if (!building && !stopped && !stopping) stop();
             return;
         }
-        if (time === null) time = Date.now();
-        time += 20;
 
         if (!playing) {
             console.log(`Playing ${input} with args ${extraFfmpegArgs.join(" ")}`);
@@ -480,6 +474,9 @@ function play(input, voiceGateway, udpConnection, secretKey) {
 
         setSpeaking(voiceGateway, true, speaking);
         speaking = true;
+
+        if (time === null) time = Date.now();
+        time += 20;
         
         const data = queue[0];
         return sendData(data, udpConnection, sequence, timestamp, voiceGateway.ssrc, secretKey, nonce).then(() => {
@@ -495,13 +492,30 @@ function play(input, voiceGateway, udpConnection, secretKey) {
     function stop() {
         stopping = true;
         queue.splice(0, queue.length);
-        queue.push(
-            silenceFrame,
-            silenceFrame,
-            silenceFrame,
-            silenceFrame,
-            silenceFrame
-        );
+
+        let silentTime = null;
+        let silenceFramesSent = 0;
+        
+        (function sendSilenceFrame() {
+            if (silentTime === null) silentTime = Date.now();
+            silentTime += 20;
+
+            sendData(silenceFrame, udpConnection, sequence, timestamp, voiceGateway.ssrc, secretKey, nonce).then(() => {
+                console.log("Sent silence frame");
+                silenceFramesSent++;
+                packetsPlayed++;
+                if (silenceFramesSent >= 5) {
+                    stopping = false;
+                    stopped = true;
+                    if (building) ffmpegProcess.kill("SIGKILL");
+                    setSpeaking(voiceGateway, false);
+                    call("stopped");
+                } else {
+                    const timeout = silentTime - Date.now();
+                    if (timeout > 0) setTimeout(sendSilenceFrame, timeout); else sendSilenceFrame();
+                }
+            });
+        })();
     }
 
     function getStatus() {

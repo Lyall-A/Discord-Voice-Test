@@ -13,6 +13,7 @@ const channelId = "1309396066482786319";
 let extraFfmpegArgs = [];
 let playing;
 let loop = false;
+let noLoop = false;
 
 main();
 
@@ -65,6 +66,7 @@ async function main() {
 
                 if (command === "!play") {
                     if (playing && !playing.getStatus().stopped) {
+                        noLoop = true;
                         playing.stop();
                         playing.once("stopped", startPlaying);
                     } else startPlaying();
@@ -74,7 +76,10 @@ async function main() {
                 }
 
                 if (command === "!stop") {
-                    if (playing && !playing.getStatus().stopped) playing.stop();
+                    if (playing && !playing.getStatus().stopped) {
+                        noLoop = true;
+                        playing.stop();
+                    }
                 }
 
                 if (command === "!loop") {
@@ -84,7 +89,9 @@ async function main() {
                             playing.once("stopped", startPlaying);
                         } else startPlaying();
                         function startPlaying() {
-                            playing = play(playing.getStatus().input, voiceGateway, udpConnection, protocol.secretKeyBuffer);
+                            if (!noLoop) {
+                                playing = play(playing.getStatus().input, voiceGateway, udpConnection, protocol.secretKeyBuffer);
+                            } else noLoop = false;
                             playing.once("stopped", () => {
                                 if (loop) startPlaying();
                             });
@@ -95,6 +102,7 @@ async function main() {
                 if (command === "!replay") {
                     if (!playing) return;
                     if (!playing.getStatus().stopped) {
+                        noLoop = true;
                         playing.stop();
                         playing.once("stopped", startPlaying);
                     } else startPlaying();

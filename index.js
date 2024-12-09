@@ -2,21 +2,21 @@ const dgram = require("dgram");
 const crypto = require("crypto");
 const cp = require("child_process");
 
-const extraFfmpegArgs = [
-    "-af", "bass=g=20",
-];
 const token = require("./token.json");
-const guildId = "1309396066482786315";
-const channelId = "1309396066482786319";
 const selfMute = false;
 const selfDeafen = true;
 const intents = (1 << 9) + (1 << 15);
+
+const guildId = "1309396066482786315";
+const channelId = "1309396066482786319";
+
+let extraFfmpegArgs = [];
 let playing;
+let loop = false;
 
 main();
 
 async function main() {
-
     console.log("Connecting to gateway");
     const gateway = await connectGateway({
         token,
@@ -62,6 +62,7 @@ async function main() {
             if (json.t === "MESSAGE_CREATE") {
                 if (json.d.guild_id !== voiceChannel.guildId) return;
                 const [command, ...args] = json.d.content.split(" ");
+
                 if (command === "!play") {
                     if (playing && !playing.getStatus().stopped) {
                         playing.stop();
@@ -69,13 +70,41 @@ async function main() {
                     } else startPlaying();
                     function startPlaying() {
                         playing = play(args.join(" "), voiceGateway, udpConnection, protocol.secretKeyBuffer);
-                        playing.once("playing", () => {
-                            console.log("Playing");
-                        });
-                        playing.once("stopped", () => {
-                            console.log("Stopped");
-                        });
                     }
+                }
+
+                if (command === "!stop") {
+                    if (playing && !playing.getStatus().stopped) playing.stop();
+                }
+
+                if (command === "!loop") {
+                    loop = !loop;
+                    if (loop && playing) {
+                        if (!playing.getStatus().stopped) {
+                            playing.once("stopped", startPlaying);
+                        } else startPlaying();
+                        function startPlaying() {
+                            playing = play(playing.getStatus().input, voiceGateway, udpConnection, protocol.secretKeyBuffer);
+                            playing.once("stopped", () => {
+                                if (loop) startPlaying();
+                            });
+                        }
+                    }
+                }
+
+                if (command === "!replay") {
+                    if (!playing) return;
+                    if (!playing.getStatus().stopped) {
+                        playing.stop();
+                        playing.once("stopped", startPlaying);
+                    } else startPlaying();
+                    function startPlaying() {
+                        playing = play(playing.getStatus().input, voiceGateway, udpConnection, protocol.secretKeyBuffer);
+                    }
+                }
+
+                if (command === "!args") {
+                    extraFfmpegArgs = args;
                 }
             }
         }
@@ -429,6 +458,7 @@ function play(input, voiceGateway, udpConnection, secretKey) {
         time += 20;
 
         if (!playing) {
+            console.log(`Playing ${input} with args ${extraFfmpegArgs.join(" ")}`);
             playing = true;
             call("playing");
         }
@@ -466,6 +496,7 @@ function play(input, voiceGateway, udpConnection, secretKey) {
 
     function getStatus() {
         return {
+            input,
             packetsPlayed,
             playing,
             building,

@@ -4,7 +4,7 @@ const cp = require("child_process");
 
 const token = require("./token.json");
 const selfMute = false;
-const selfDeafen = true;
+const selfDeafen = false;
 const intents = (1 << 9) + (1 << 15);
 
 // const guildId = "1309396066482786315";
@@ -57,6 +57,8 @@ async function main() {
     });
 
     console.log("Ready");
+
+    // udpConnection.connection.addListener("message", msg => console.log("Receiving UDP data:", msg.toString()));
 
     gateway.connection.addEventListener("message", msg => {
         const json = JSON.parse(msg.data);

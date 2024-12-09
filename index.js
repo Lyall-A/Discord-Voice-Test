@@ -480,13 +480,15 @@ function play(input, voiceGateway, udpConnection, secretKey) {
 
         setSpeaking(voiceGateway, true, speaking);
         speaking = true;
-
-        // console.log((queue.length * 20) / 1000);
-        return sendData(queue[0], udpConnection, sequence, timestamp, voiceGateway.ssrc, secretKey, nonce).then(() => {
+        
+        const data = queue[0];
+        return sendData(data, udpConnection, sequence, timestamp, voiceGateway.ssrc, secretKey, nonce).then(() => {
             playedDuration += 20;
             packetsPlayed++;
             queue.shift();
-            setTimeout(send, time - Date.now());
+            const timeout = time - Date.now();
+            console.log("Packet:", packetsPlayed, "Size:", data.byteLength, "Timestamp:", timestamp, "Next packet:", timeout, "Played:", playedDuration, "Remaining:", queue.length * 20);
+            if (timeout > 0) setTimeout(send, timeout); else send();
         });
     }
 

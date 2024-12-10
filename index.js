@@ -7,10 +7,10 @@ const selfMute = false;
 const selfDeafen = false;
 const intents = (1 << 9) + (1 << 15);
 
-// const guildId = "1309396066482786315";
-// const channelId = "1309396066482786319";
-const guildId = "875581360071376926";
-const channelId = "875581360071376930";
+const guildId = "1309396066482786315";
+const channelId = "1309396066482786319";
+//const guildId = "875581360071376926";
+//const channelId = "875581360071376930";
 
 let extraFfmpegArgs = [];
 let playing;
@@ -69,7 +69,7 @@ async function main() {
                 const [command, ...args] = json.d.content.split(" ");
 
                 if (command === "!play") {
-                    if (playing && !playing.getStatus().stopped) {
+                    if (playing && !playing.getInfo().stopped) {
                         noLoop = true;
                         playing.stop();
                         playing.once("stopped", startPlaying);
@@ -80,7 +80,7 @@ async function main() {
                 }
 
                 if (command === "!stop") {
-                    if (playing && !playing.getStatus().stopped) {
+                    if (playing && !playing.getInfo().stopped) {
                         noLoop = true;
                         playing.stop();
                     }
@@ -89,12 +89,12 @@ async function main() {
                 if (command === "!loop") {
                     loop = !loop;
                     if (loop && playing) {
-                        if (!playing.getStatus().stopped) {
+                        if (!playing.getInfo().stopped) {
                             playing.once("stopped", startPlaying);
                         } else startPlaying();
                         function startPlaying() {
                             if (!noLoop) {
-                                playing = play(playing.getStatus().input, voiceGateway, udpConnection, protocol.secretKeyBuffer);
+                                playing = play(playing.getInfo().input, voiceGateway, udpConnection, protocol.secretKeyBuffer);
                             } else noLoop = false;
                             playing.once("stopped", () => {
                                 if (loop) startPlaying();
@@ -105,14 +105,26 @@ async function main() {
 
                 if (command === "!replay") {
                     if (!playing) return;
-                    if (!playing.getStatus().stopped) {
+                    if (!playing.getInfo().stopped) {
                         noLoop = true;
                         playing.stop();
                         playing.once("stopped", startPlaying);
                     } else startPlaying();
                     function startPlaying() {
-                        playing = play(playing.getStatus().input, voiceGateway, udpConnection, protocol.secretKeyBuffer);
+                        playing = play(playing.getInfo().input, voiceGateway, udpConnection, protocol.secretKeyBuffer);
                     }
+                }
+
+                if (command === "!send") {
+                    const info = playing?.getInfo();
+                    if (!info?.ffmpegBuffer) return;
+                    const form = new FormData();
+                    form.append("files[0]", new Blob([info.ffmpegBuffer], { type: "audio/ogg" }), "audio.ogg");
+                    fetch(`https://discord.com/api/v10/channels/${json.d.channel_id}/messages`, {
+                        method: "POST",
+                        headers: { Authorization: `Bot ${token}` },
+                        body: form
+                    });
                 }
 
                 if (command === "!args") {
@@ -396,6 +408,8 @@ function play(input, voiceGateway, udpConnection, secretKey) {
     const listeners = [];
     const silenceFrame = Buffer.from([248, 255, 254]);
     const queue = [];
+    const ffmpegData = [];
+    let ffmpegBuffer;
     let packetsPlayed = 0;
     let time = null;
     let building = true;
@@ -417,6 +431,7 @@ function play(input, voiceGateway, udpConnection, secretKey) {
     ]);
 
     ffmpegProcess.stdout.on("data", data => {
+        ffmpegData.push(data);
         if (stopping || stopped) return;
 
         const pageSegments = data.readUInt8(26);
@@ -449,6 +464,7 @@ function play(input, voiceGateway, udpConnection, secretKey) {
     ffmpegProcess.stdout.on("close", () => {
         console.log(`Finished building, ${duration / 1000} seconds of playback`);
         building = false;
+        ffmpegBuffer = Buffer.concat(ffmpegData);
         if (!playing) {
             stopped = true;
             call("stopped");
@@ -520,11 +536,13 @@ function play(input, voiceGateway, udpConnection, secretKey) {
         })();
     }
 
-    function getStatus() {
+    function getInfo() {
         return {
             input,
             packetsPlayed,
             playing,
+            ffmpegData,
+            ffmpegBuffer,
             building,
             stopping,
             stopped,
@@ -556,6 +574,6 @@ function play(input, voiceGateway, udpConnection, secretKey) {
         on,
         once,
         stop,
-        getStatus
+        getInfo
     };
 }

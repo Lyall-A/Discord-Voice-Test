@@ -1,6 +1,7 @@
 const dgram = require("dgram");
 const crypto = require("crypto");
 const cp = require("child_process");
+// const WebSocket = require("ws");
 
 const token = require("./token.json");
 const selfMute = false;
@@ -53,6 +54,7 @@ async function main() {
         address: ipDiscovery.address,
         port: ipDiscovery.port,
         mode: "aead_aes256_gcm_rtpsize",
+        // mode: "aead_xchacha20_poly1305_rtpsize",
         audioCodec: "opus"
     });
 
@@ -374,6 +376,7 @@ function encryptData(data, rtpHeader, secretKey, nonce) {
 
     const noncePadding = nonceBuffer.subarray(0, 4);
 
+    // const cipher = crypto.createCipheriv("chacha20-poly1305", secretKey, nonceBuffer);
     const cipher = crypto.createCipheriv("aes-256-gcm", secretKey, nonceBuffer);
     cipher.setAAD(rtpHeader);
 
@@ -435,29 +438,20 @@ function play(input, voiceGateway, udpConnection, secretKey) {
         if (stopping || stopped) return;
 
         const pageSegments = data.readUInt8(26);
-        const table = data.slice(27, 27 + pageSegments);
+        const segmentTable = data.subarray(27, 27 + pageSegments);
 
-        let sizes = [];
-        let totalSize = 0;
-        let i = 0;
-        while (i < pageSegments) {
-            let size = 0;
-            let x = 255;
-            while (x === 255) {
-                x = table.readUInt8(i++);
-                size += x;
-            }
-            sizes.push(size);
-            totalSize += size;
-        }
+        let segmentOffset = 27 + pageSegments;
+        let segmentSize = 0;
+        for (const segmentLength of segmentTable) {
+            segmentSize += segmentLength;
+            if (segmentLength >= 255) continue;
+            const segment = data.subarray(segmentOffset, segmentOffset + segmentSize);
+            segmentOffset += segmentSize;
+            segmentSize = 0;
 
-        let start = 27 + pageSegments;
-        for (const size of sizes) {
-            const segment = data.slice(start, start + size);
             duration += 20;
             queue.push(segment);
             if (queue.length === 1) send();
-            start += size;
         }
     });
 
